@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#000080">
+<link rel="manifest" href="/static/manifest.json">
+<title>JanSetu AI — Constituency Decision Intelligence</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root { --saffron:#FF9933; --green:#138808; --navy:#000080; --bg:#f7f6f2; --card:#fff; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:system-ui,'Segoe UI',sans-serif; background:var(--bg); color:#222; }
+  header { background:linear-gradient(90deg,var(--saffron),#fff 50%,var(--green)); padding:2px; }
+  .head-inner { background:var(--navy); color:#fff; padding:14px 24px; display:flex; align-items:center; gap:14px; }
+  .head-inner h1 { font-size:1.3rem; } .head-inner span { opacity:.8; font-size:.85rem; }
+  nav { display:flex; gap:2px; padding:8px 16px 0; background:var(--card); border-bottom:1px solid #ddd; overflow-x:auto; }
+  nav button { border:none; background:none; padding:10px 14px; font-size:.92rem; cursor:pointer;
+    border-bottom:3px solid transparent; color:#555; white-space:nowrap; }
+  nav button.active { color:var(--navy); border-color:var(--saffron); font-weight:600; }
+  main { max-width:1100px; margin:0 auto; padding:20px; }
+  .tab { display:none; } .tab.active { display:block; }
+  .card { background:var(--card); border-radius:12px; padding:18px; margin-bottom:16px;
+    box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media(max-width:800px){ .grid{grid-template-columns:1fr} }
+  #chatlog { min-height:280px; max-height:420px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding:8px 0; }
+  .msg { max-width:80%; padding:10px 14px; border-radius:14px; line-height:1.45; font-size:.95rem; }
+  .msg.user { align-self:flex-end; background:var(--navy); color:#fff; }
+  .msg.bot { align-self:flex-start; background:#eef1f7; }
+  .msg.bot small { display:block; margin-top:6px; color:#888; font-size:.72rem; white-space:pre-wrap; }
+  .chatbar { display:flex; gap:8px; margin-top:10px; }
+  .chatbar input { flex:1; padding:12px; border:1px solid #ccc; border-radius:10px; font-size:1rem; min-width:0; }
+  button.primary { background:var(--green); color:#fff; border:none; border-radius:10px;
+    padding:12px 18px; font-size:1rem; cursor:pointer; }
+  button.mic { background:var(--saffron); color:#fff; border:none; border-radius:10px; padding:12px 16px;
+    font-size:1.1rem; cursor:pointer; }
+  button.mic.rec { background:#d32f2f; animation:pulse 1s infinite; }
+  @keyframes pulse { 50%{opacity:.6} }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .chips button { background:#fff; border:1px solid var(--navy); color:var(--navy); border-radius:20px;
+    padding:6px 12px; font-size:.82rem; cursor:pointer; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:16px; }
+  .kpi { background:var(--card); border-radius:12px; padding:16px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .kpi b { font-size:1.55rem; color:var(--navy); display:block; }
+  .kpi.warn b { color:#d32f2f; }
+  .kpi small { color:#777; }
+  .alert { background:#fff3e0; border-left:4px solid var(--saffron); padding:10px 14px; border-radius:8px; margin-bottom:8px; font-size:.9rem; }
+  .alert.red { background:#ffebee; border-color:#d32f2f; }
+  .alert.info { background:#e3f2fd; border-color:#1976d2; font-size:.82rem; }
+  #aiStatus { font-size:.7rem; background:rgba(255,255,255,.15); border-radius:10px; padding:3px 8px; margin-left:8px; }
+  .work { display:flex; gap:14px; padding:14px 0; border-bottom:1px solid #eee; }
+  .work .rank { background:var(--saffron); color:#fff; min-width:34px; height:34px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-weight:700; }
+  .work.high .rank { background:#d32f2f; }
+  .badge { font-size:.72rem; background:#eef1f7; border-radius:10px; padding:2px 8px; color:#555; }
+  .badge.scst { background:#e8f5e9; color:var(--green); font-weight:600; }
+  .linkbtn { background:none; border:none; color:var(--navy); text-decoration:underline; cursor:pointer; font-size:.82rem; padding:0; }
+  #map { height:480px; border-radius:12px; }
+  #preview { max-width:100%; max-height:220px; border-radius:10px; display:none; margin-top:10px; }
+  select, textarea { width:100%; padding:10px; border:1px solid #ccc; border-radius:10px; font-size:1rem; margin-top:8px; }
+  .ticket { background:#e8f5e9; border-left:4px solid var(--green); padding:12px; border-radius:8px; margin-top:12px; }
+  .lang-toggle { margin-left:auto; }
+  .lang-toggle select { width:auto; padding:6px 8px; font-size:.85rem; margin:0; }
+  .spin { color:#888; font-style:italic; }
+  pre.letter { white-space:pre-wrap; background:#f4f4f4; border-radius:8px; padding:12px; font-size:.85rem; margin-top:8px; font-family:inherit; }
+  #consent { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:99; }
+  #consent .card { max-width:480px; margin:16px; }
+  #offlineBanner { display:none; background:#d32f2f; color:#fff; text-align:center; padding:6px; font-size:.85rem; }
+</style>
+</head>
+<body>
+<div id="offlineBanner">📴 Offline — reports will be saved and sent when you're back online.</div>
+<header>
+  <div class="head-inner">
+    <div style="font-size:1.8rem">🇮🇳</div>
+    <div><h1>JanSetu AI</h1><span>Constituency Decision Intelligence · जनसेतु</span><span id="aiStatus" title="Active AI provider">…</span></div>
+    <div class="lang-toggle"><select id="lang" aria-label="Language for voice input and output">
+      <option value="en-IN">English</option><option value="hi-IN">हिन्दी</option>
+      <option value="bn-IN">বাংলা</option><option value="ta-IN">தமிழ்</option>
+      <option value="te-IN">తెలుగు</option><option value="mr-IN">मराठी</option>
+      <option value="gu-IN">ગુજરાતી</option><option value="kn-IN">ಕನ್ನಡ</option>
+      <option value="ml-IN">മലയാളം</option><option value="pa-IN">ਪੰਜਾਬੀ</option>
+      <option value="or-IN">ଓଡ଼ିଆ</option><option value="ur-IN">اردو</option>
+    </select></div>
+  </div>
+</header>
+<nav role="tablist">
+  <button class="active" data-tab="chat" role="tab">💬 Ask JanSetu</button>
+  <button data-tab="map" role="tab">🗺️ Demand Hotspots</button>
+  <button data-tab="dash" role="tab">📊 Dashboard</button>
+  <button data-tab="brief" role="tab">🎯 Priority Works</button>
+  <button data-tab="report" role="tab">📷 Report / Suggest</button>
+</nav>
+<main>
+  <!-- CHAT -->
+  <section id="chat" class="tab active">
+    <div class="card">
+      <div id="chatlog" role="log" aria-live="polite">
+        <div class="msg bot">Namaste! Ask me anything about the constituency's grievances, demand or MPLADS funds — in any Indian language, typed or spoken. 🎙️</div>
+      </div>
+      <canvas id="chatChart" style="display:none;max-height:260px"></canvas>
+      <div class="chatbar">
+        <button class="mic" id="micBtn" title="Speak your question" aria-label="Speak your question">🎙️</button>
+        <input id="q" placeholder="e.g. Which wards had a spike in water complaints this month?" aria-label="Your question">
+        <button class="primary" onclick="ask()">Ask</button>
+      </div>
+      <div class="chips">
+        <button onclick="preset('Which 5 wards have the most open complaints?')">Top wards by open complaints</button>
+        <button onclick="preset('How much MPLADS fund is unspent this year?')">Unspent MPLADS funds</button>
+        <button onclick="preset('Which SC/ST majority wards have the fewest schools per person?')">SC/ST infra gaps</button>
+        <button onclick="preset('पिछले महीने सबसे ज़्यादा शिकायतें किस वार्ड से आईं?')">हिन्दी में पूछें</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAP -->
+  <section id="map-tab" class="tab" data-name="map">
+    <div class="card">
+      <h3>🗺️ Demand hotspots (open issues, last 60 days)</h3>
+      <p style="color:#666;font-size:.88rem;margin:6px 0 12px">Circle size = open complaints; red = high-severity concentration. Click a ward for its profile.</p>
+      <div id="map" role="application" aria-label="Constituency demand hotspot map"></div>
+    </div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="dash" class="tab">
+    <div class="kpis">
+      <div class="kpi"><b id="kOpen">–</b><small>Open grievances</small></div>
+      <div class="kpi"><b id="k30">–</b><small>New in 30 days</small></div>
+      <div class="kpi"><b id="kAnom">–</b><small>Active spike alerts</small></div>
+      <div class="kpi warn"><b id="kUnspent">–</b><small>MPLADS unspent (₹ lakh)</small></div>
+      <div class="kpi warn"><b id="kScSt">–</b><small>SC/ST spend vs 22.5%</small></div>
+    </div>
+    <div id="alerts"></div>
+    <div class="grid">
+      <div class="card"><h3>Complaints by category (30 days)</h3><canvas id="catChart"></canvas></div>
+      <div class="card"><h3>Open complaints by ward</h3><canvas id="wardChart"></canvas></div>
+      <div class="card"><h3>Monthly trend (12 months)</h3><canvas id="trendChart"></canvas></div>
+      <div class="card"><h3>MPLADS: allocated vs spent (₹ lakh)</h3><canvas id="fundChart"></canvas></div>
+    </div>
+  </section>
+
+  <!-- BRIEFING -->
+  <section id="brief" class="tab">
+    <div class="card">
+      <h3>🎯 Priority Works — MPLADS Decision Briefing</h3>
+      <p style="color:#666;font-size:.88rem;margin:6px 0 12px">Gemini fuses citizen demand, spike detection, ward demographics, and the MPLADS fund ledger into ranked, sanctionable, compliant works — each with a draft letter to the District Authority.</p>
+      <button class="primary" onclick="loadBriefing()">Generate briefing</button>
+      <button class="mic" style="padding:10px 14px" onclick="speakBriefing()" title="Read aloud" aria-label="Read briefing aloud">🔊</button>
+      <div id="complianceAlert"></div>
+      <div id="briefSummary" style="margin-top:12px;font-weight:600"></div>
+      <div id="works"></div>
+    </div>
+  </section>
+
+  <!-- REPORT -->
+  <section id="report" class="tab">
+    <div class="grid">
+      <div class="card">
+        <h3>📷 Report an issue / suggest a work</h3>
+        <p style="color:#666;font-size:.88rem;margin:6px 0">Take a photo — AI identifies the problem, department and severity. Works offline: reports queue and send automatically when you have signal.</p>
+        <input type="file" id="photo" accept="image/*" capture="environment" aria-label="Take or upload a photo">
+        <img id="preview" alt="Photo preview">
+        <select id="ward" aria-label="Select your ward"></select>
+        <textarea id="note" rows="2" placeholder="Optional note — or speak it with 🎙️" aria-label="Optional note"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="mic" id="noteMic" title="Speak your note" aria-label="Speak your note">🎙️</button>
+          <button class="primary" style="flex:1" onclick="submitReport()">Submit</button>
+        </div>
+        <div id="queueInfo" style="font-size:.82rem;color:#d32f2f;margin-top:8px"></div>
+      </div>
+      <div class="card"><h3>Ticket</h3><div id="ticketOut" style="color:#888">Submit a photo to see the AI-generated ticket.</div></div>
+    </div>
+  </section>
+</main>
+
+<!-- CONSENT -->
+<div id="consent" style="display:none">
+  <div class="card" role="dialog" aria-label="Privacy consent">
+    <h3>🔒 Your privacy</h3>
+    <p style="font-size:.9rem;line-height:1.5;margin:10px 0">JanSetu collects only your ward, issue category, description and optional photo — never your name, Aadhaar, or exact home address. Data is stored on servers in India and used solely for constituency planning. You can request deletion at any time. Photos may be analysed by AI to classify the issue.</p>
+    <button class="primary" style="width:100%" onclick="acceptConsent()">I understand and agree · मैं सहमत हूँ</button>
+  </div>
+</div>
+
+<script>
+const WARDS = ["Rajpur North","Rajpur South","Ganga Vihar","Shastri Nagar","Ambedkar Colony","Indira Market","Nehru Chowk","Patel Nagar","Kisan Basti","Lal Bagh","Station Road","Civil Lines","Ramganj","Tilak Nagar","Gandhi Maidan","Subhash Colony"];
+document.getElementById('ward').innerHTML = WARDS.map(w=>`<option>${w}</option>`).join('');
+
+// AI status chip + notice helper
+fetch('/api/health').then(r=>r.json()).then(h=>{
+  const el=document.getElementById('aiStatus');
+  el.textContent = h.engine==='gemini' ? 'AI: Gemini \u2713' : 'AI: Lite engine (free fallback)';
+}).catch(()=>{});
+function noticeHtml(j){
+  return j && j.notice ? `<div class="alert info">\u2139\ufe0f ${j.notice}</div>` : '';
+}
+function addNotice(container, j){
+  if(j && j.notice){ const d=document.createElement('div'); d.className='alert info';
+    d.textContent='\u2139\ufe0f '+j.notice; container.appendChild(d); d.scrollIntoView({behavior:'smooth'}); }
+}
+
+// consent
+if(!localStorage.getItem('jansetu_consent')) document.getElementById('consent').style.display='flex';
+function acceptConsent(){ localStorage.setItem('jansetu_consent','1'); document.getElementById('consent').style.display='none'; }
+
+// PWA
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js');
+window.addEventListener('offline',()=>document.getElementById('offlineBanner').style.display='block');
+window.addEventListener('online',()=>{document.getElementById('offlineBanner').style.display='none'; flushQueue();});
+
+// tabs
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  const el=document.getElementById(b.dataset.tab)||document.querySelector(`[data-name="${b.dataset.tab}"]`);
+  el.classList.add('active');
+  if(b.dataset.tab==='dash') loadDash();
+  if(b.dataset.tab==='map') loadMap();
+});
+
+// ---------- chat ----------
+let chatChart;
+function addMsg(text, who, sub){
+  const d=document.createElement('div'); d.className='msg '+who; d.textContent=text;
+  if(sub){const s=document.createElement('small'); s.textContent=sub; d.appendChild(s);}
+  document.getElementById('chatlog').appendChild(d);
+  d.scrollIntoView({behavior:'smooth'});
+  return d;
+}
+function preset(t){ document.getElementById('q').value=t; ask(); }
+async function ask(){
+  const q=document.getElementById('q').value.trim(); if(!q) return;
+  document.getElementById('q').value='';
+  addMsg(q,'user');
+  const wait=addMsg('Thinking…','bot'); wait.classList.add('spin');
+  try{
+    const r=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
+    const j=await r.json();
+    wait.remove();
+    addMsg(j.answer,'bot', j.sql ? 'SQL: '+j.sql.replace(/\s+/g,' ') : null);
+    addNotice(document.getElementById('chatlog'), j);
+    speak(j.answer);
+    const cv=document.getElementById('chatChart');
+    if(j.chart!=='none' && j.rows && j.rows.length && j.x && j.y){
+      cv.style.display='block';
+      if(chatChart) chatChart.destroy();
+      chatChart=new Chart(cv,{type:j.chart==='line'?'line':'bar',
+        data:{labels:j.rows.map(r=>r[j.x]),datasets:[{label:j.y,data:j.rows.map(r=>r[j.y]),backgroundColor:'#FF9933'}]},
+        options:{plugins:{legend:{display:false}}}});
+    } else cv.style.display='none';
+  }catch(e){ wait.textContent='Error: '+e.message; }
+}
+document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')ask()});
+
+// ---------- voice ----------
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function wireMic(btn, targetInput, andThen){
+  if(!SR){ btn.style.display='none'; return; }
+  const rec=new SR(); rec.interimResults=false;
+  btn.onclick=()=>{ rec.lang=document.getElementById('lang').value; rec.start(); btn.classList.add('rec'); };
+  rec.onresult=e=>{ targetInput.value=e.results[0][0].transcript; btn.classList.remove('rec'); if(andThen)andThen(); };
+  rec.onerror=()=>btn.classList.remove('rec'); rec.onend=()=>btn.classList.remove('rec');
+}
+wireMic(document.getElementById('micBtn'), document.getElementById('q'), ask);
+wireMic(document.getElementById('noteMic'), document.getElementById('note'));
+function speak(text){
+  if(!window.speechSynthesis) return;
+  const u=new SpeechSynthesisUtterance(text.replace(/\[mock[^\]]*\]/g,''));
+  u.lang=/[ऀ-ॿ]/.test(text)?'hi-IN':document.getElementById('lang').value;
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+
+// ---------- map (Google Maps if key, else Leaflet/OSM) ----------
+let mapLoaded=false;
+async function loadMap(){
+  if(mapLoaded) return; mapLoaded=true;
+  const cfg=await (await fetch('/api/config')).json();
+  const data=await (await fetch('/api/hotspots')).json();
+  if(cfg.maps_api_key){
+    const s=document.createElement('script');
+    s.src=`https://maps.googleapis.com/maps/api/js?key=${cfg.maps_api_key}&loading=async&callback=initGMap`;
+    window._hot=data; document.head.appendChild(s);
+    s.onerror=()=>{ mapNotice('Google Maps could not load (key restriction or quota). Switched to the free OpenStreetMap provider \u2014 all hotspot features unchanged.'); initLeaflet(data); };
+    window.gm_authFailure=()=>{ mapNotice('Google Maps rejected the API key (restriction/quota). Switched to the free OpenStreetMap provider \u2014 all hotspot features unchanged.'); initLeaflet(data); };
+  } else {
+    mapNotice('No Google Maps key configured \u2014 using the free OpenStreetMap provider. All hotspot features unchanged.');
+    initLeaflet(data);
+  }
+}
+function mapNotice(msg){
+  const card=document.getElementById('map').parentElement;
+  const d=document.createElement('div'); d.className='alert info'; d.textContent='\u2139\ufe0f '+msg;
+  card.insertBefore(d, document.getElementById('map'));
+}
+window.initGMap=function(){
+  const data=window._hot;
+  const m=new google.maps.Map(document.getElementById('map'),{center:{lat:26.455,lng:80.355},zoom:12,mapTypeControl:false});
+  data.wards.forEach(w=>{
+    const highRatio=w.open_count? w.high_count/w.open_count:0;
+    const c=new google.maps.Circle({map:m,center:{lat:w.lat,lng:w.lng},
+      radius:120+w.open_count*14,
+      fillColor:highRatio>0.3?'#d32f2f':'#FF9933',fillOpacity:.4,strokeColor:'#000080',strokeWeight:1});
+    const info=new google.maps.InfoWindow({content:wardHtml(w)});
+    c.addListener('click',e=>{info.setPosition(e.latLng);info.open(m);});
+  });
+};
+function initLeaflet(data){
+  const m=L.map('map').setView([26.455,80.355],12);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(m);
+  data.wards.forEach(w=>{
+    const highRatio=w.open_count? w.high_count/w.open_count:0;
+    L.circle([w.lat,w.lng],{radius:120+w.open_count*14,
+      color:'#000080',weight:1,fillColor:highRatio>0.3?'#d32f2f':'#FF9933',fillOpacity:.4})
+      .addTo(m).bindPopup(wardHtml(w));
+  });
+}
+function wardHtml(w){
+  return `<b>${w.ward}</b><br>Open issues: ${w.open_count} (high: ${w.high_count})<br>
+  Top category: ${w.top_category||'-'}<br>Population: ${(w.population/1000).toFixed(0)}k · SC/ST: ${w.sc_st_pct}%<br>
+  Schools: ${w.schools} · PHCs: ${w.phcs}`;
+}
+
+// ---------- dashboard ----------
+const charts={};
+function mkChart(id,type,labels,datasets,horizontal){
+  if(charts[id]) charts[id].destroy();
+  charts[id]=new Chart(document.getElementById(id),{type,
+    data:{labels,datasets},
+    options:{indexAxis:horizontal?'y':'x',plugins:{legend:{display:datasets.length>1}}}});
+}
+async function loadDash(){
+  const [s,f]=await Promise.all([(await fetch('/api/dashboard')).json(),(await fetch('/api/funds')).json()]);
+  document.getElementById('kOpen').textContent=s.total_open;
+  document.getElementById('k30').textContent=s.last_30_days;
+  document.getElementById('kAnom').textContent=s.anomalies.length;
+  document.getElementById('kUnspent').textContent='₹'+f.unspent_lakh;
+  document.getElementById('kScSt').textContent=f.sc_st_pct_of_spend+'%';
+  let html=s.anomalies.map(a=>
+    `<div class="alert">🚨 <b>${a.category}</b> complaints in <b>${a.ward}</b> are running <b>${a.ratio.toFixed(1)}×</b> the 6-month baseline.</div>`).join('');
+  if(!f.sc_st_compliant) html+=`<div class="alert red">⚖️ SC/ST-area spend is <b>${f.sc_st_pct_of_spend}%</b> — below the mandatory <b>22.5%</b> under MPLADS.</div>`;
+  document.getElementById('alerts').innerHTML=html;
+  mkChart('catChart','bar',s.by_category.map(r=>r.category),[{data:s.by_category.map(r=>r.n),backgroundColor:'#FF9933'}]);
+  mkChart('wardChart','bar',s.by_ward.slice(0,10).map(r=>r.ward),[{data:s.by_ward.slice(0,10).map(r=>r.n),backgroundColor:'#000080'}],true);
+  mkChart('trendChart','line',s.trend.map(r=>r.month),[{data:s.trend.map(r=>r.n),borderColor:'#138808',fill:false,tension:.3}]);
+  mkChart('fundChart','bar',f.years.map(r=>r.year),
+    [{label:'Allocated',data:f.years.map(r=>r.allocated_lakh),backgroundColor:'#000080'},
+     {label:'Spent',data:f.years.map(r=>r.spent_lakh),backgroundColor:'#FF9933'}]);
+}
+
+// ---------- briefing ----------
+let lastBriefing='', lastWorks=[];
+async function loadBriefing(){
+  document.getElementById('briefSummary').textContent='Generating…';
+  const j=await (await fetch('/api/briefing')).json();
+  lastWorks=j.works||[];
+  document.getElementById('briefSummary').textContent=j.summary||'';
+  document.getElementById('complianceAlert').innerHTML=(j.compliance_alert?
+    `<div class="alert red" style="margin-top:12px">⚖️ ${j.compliance_alert}</div>`:'')+noticeHtml(j);
+  lastBriefing=(j.summary||'')+'. '+lastWorks.map(w=>`Priority ${w.rank}: ${w.title}. ${w.rationale}`).join(' ');
+  document.getElementById('works').innerHTML=lastWorks.map((w,i)=>`
+    <div class="work ${w.urgency==='high'?'high':''}">
+      <div class="rank">${w.rank}</div>
+      <div style="flex:1"><b>${w.title}</b>
+      <span class="badge">${w.ward||''}</span> <span class="badge">${w.department||''}</span>
+      <span class="badge">₹${w.est_cost_lakh||'?'} lakh</span>
+      ${w.sc_st_ward?'<span class="badge scst">SC/ST mandate ✓</span>':''}
+      <div style="font-size:.88rem;color:#555;margin-top:4px">${w.rationale}${w.fund_note?' · '+w.fund_note:''}</div>
+      <button class="linkbtn" onclick="draftLetter(${i})">📄 Draft recommendation letter to District Authority</button>
+      <div id="letter${i}"></div></div>
+    </div>`).join('');
+}
+async function draftLetter(i){
+  const el=document.getElementById('letter'+i); el.innerHTML='<span class="spin">Drafting…</span>';
+  const j=await (await fetch('/api/letter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lastWorks[i])})).json();
+  el.innerHTML=noticeHtml(j)+`<pre class="letter">${j.letter}</pre>`;
+}
+function speakBriefing(){ if(lastBriefing) speak(lastBriefing); }
+
+// ---------- photo report + offline queue ----------
+document.getElementById('photo').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const img=document.getElementById('preview'); img.src=URL.createObjectURL(f); img.style.display='block';
+});
+function fileToB64(f){ return new Promise(res=>{const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(f);}); }
+function b64ToBlob(b64){ return fetch(b64).then(r=>r.blob()); }
+async function submitReport(){
+  const f=document.getElementById('photo').files[0];
+  if(!f){ alert('Please choose or take a photo first'); return; }
+  const ward=document.getElementById('ward').value, note=document.getElementById('note').value;
+  document.getElementById('ticketOut').textContent='AI is analysing the photo…';
+  try{
+    const t=await postReport(f,ward,note);
+    showTicket(t);
+  }catch(e){
+    const q=JSON.parse(localStorage.getItem('jansetu_queue')||'[]');
+    q.push({photo:await fileToB64(f), ward, note, ts:Date.now()});
+    localStorage.setItem('jansetu_queue',JSON.stringify(q));
+    document.getElementById('ticketOut').innerHTML='<b>📴 Saved offline.</b> Your report will be submitted automatically when you have signal.';
+    updateQueueInfo();
+  }
+}
+async function postReport(fileOrBlob, ward, note){
+  const fd=new FormData();
+  fd.append('photo',fileOrBlob,'report.jpg'); fd.append('ward',ward); fd.append('note',note);
+  const r=await fetch('/api/report',{method:'POST',body:fd});
+  if(!r.ok) throw new Error('server');
+  return r.json();
+}
+function showTicket(t){
+  document.getElementById('ticketOut').innerHTML=noticeHtml(t)+`
+    <div class="ticket"><b>✅ Grievance #${t.id} filed</b><br>
+    <b>Category:</b> ${t.category} &nbsp; <b>Dept:</b> ${t.department}<br>
+    <b>Severity:</b> ${t.severity} &nbsp; <b>Ward:</b> ${t.ward}<br>
+    <b>AI description:</b> ${t.description}</div>`;
+  speak(`Your grievance number ${t.id} has been filed under ${t.category}, assigned to ${t.department}.`);
+}
+async function flushQueue(){
+  const q=JSON.parse(localStorage.getItem('jansetu_queue')||'[]');
+  if(!q.length) return;
+  const remaining=[];
+  for(const item of q){
+    try{ const blob=await b64ToBlob(item.photo); await postReport(blob,item.ward,item.note); }
+    catch(e){ remaining.push(item); }
+  }
+  localStorage.setItem('jansetu_queue',JSON.stringify(remaining));
+  updateQueueInfo();
+  if(!remaining.length && q.length) document.getElementById('ticketOut').innerHTML='<b>✅ Queued reports submitted.</b>';
+}
+function updateQueueInfo(){
+  const n=JSON.parse(localStorage.getItem('jansetu_queue')||'[]').length;
+  document.getElementById('queueInfo').textContent=n?`${n} report(s) queued offline`:'';
+}
+updateQueueInfo(); if(navigator.onLine) flushQueue();
+</script>
+</body>
+</html>
