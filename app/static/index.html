@@ -239,7 +239,7 @@ async function ask(){
   addMsg(q,'user');
   const wait=addMsg('Thinking…','bot'); wait.classList.add('spin');
   try{
-    const r=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
+    const r=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,lang:document.getElementById('lang').value})});
     const j=await r.json();
     wait.remove();
     addMsg(j.answer,'bot', j.sql ? 'SQL: '+j.sql.replace(/\s+/g,' ') : null);
@@ -268,10 +268,19 @@ function wireMic(btn, targetInput, andThen){
 }
 wireMic(document.getElementById('micBtn'), document.getElementById('q'), ask);
 wireMic(document.getElementById('noteMic'), document.getElementById('note'));
+function detectLang(text){
+  // Script-based detection for Indian languages (TTS voice selection)
+  const scripts=[[/[ऀ-ॿ]/,'hi-IN'],[/[ঀ-৿]/,'bn-IN'],[/[஀-௿]/,'ta-IN'],[/[ఀ-౿]/,'te-IN'],
+    [/[઀-૿]/,'gu-IN'],[/[ಀ-೿]/,'kn-IN'],[/[ഀ-ൿ]/,'ml-IN'],[/[਀-੿]/,'pa-IN'],
+    [/[଀-୿]/,'or-IN'],[/[؀-ۿ]/,'ur-IN']];
+  for(const [re,code] of scripts) if(re.test(text)) return code;
+  return null;
+}
 function speak(text){
   if(!window.speechSynthesis) return;
-  const u=new SpeechSynthesisUtterance(text.replace(/\[mock[^\]]*\]/g,''));
-  u.lang=/[ऀ-ॿ]/.test(text)?'hi-IN':document.getElementById('lang').value;
+  const clean=text.replace(/\[mock[^\]]*\]/g,'');
+  const u=new SpeechSynthesisUtterance(clean);
+  u.lang=detectLang(clean)||document.getElementById('lang').value;
   speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
 
@@ -342,7 +351,7 @@ async function loadDash(){
   document.getElementById('kScSt').textContent=f.sc_st_pct_of_spend+'%';
   let html=s.anomalies.map(a=>
     `<div class="alert">🚨 <b>${a.category}</b> complaints in <b>${a.ward}</b> are running <b>${a.ratio.toFixed(1)}×</b> the 6-month baseline.</div>`).join('');
-  if(!f.sc_st_compliant) html+=`<div class="alert red">⚖️ SC/ST-area spend is <b>${f.sc_st_pct_of_spend}%</b> — below the mandatory <b>22.5%</b> under MPLADS.</div>`;
+  if(!f.sc_st_compliant) html+=`<div class="alert red">⚖️ SC/ST-area spend is <b>${f.sc_st_pct_of_spend}%</b> — below the mandatory <b>22.5%</b> under MPLADS. Corrective action: sanction ≈ <b>₹${f.sc_st_gap_lakh} lakh</b> of works in SC/ST wards this year to close the gap.</div>`;
   document.getElementById('alerts').innerHTML=html;
   mkChart('catChart','bar',s.by_category.map(r=>r.category),[{data:s.by_category.map(r=>r.n),backgroundColor:'#FF9933'}]);
   mkChart('wardChart','bar',s.by_ward.slice(0,10).map(r=>r.ward),[{data:s.by_ward.slice(0,10).map(r=>r.n),backgroundColor:'#000080'}],true);
@@ -354,9 +363,23 @@ async function loadDash(){
 
 // ---------- briefing ----------
 let lastBriefing='', lastWorks=[];
+function officeHeaders(){
+  const k=localStorage.getItem('jansetu_office_key');
+  return k?{'X-Office-Key':k}:{};
+}
+async function officeFetch(url, opts={}){
+  opts.headers=Object.assign({}, opts.headers||{}, officeHeaders());
+  let r=await fetch(url, opts);
+  if(r.status===401){
+    const k=prompt('This office feature is protected. Enter the office access key:');
+    if(k){ localStorage.setItem('jansetu_office_key',k);
+      opts.headers['X-Office-Key']=k; r=await fetch(url, opts); }
+  }
+  return r;
+}
 async function loadBriefing(){
   document.getElementById('briefSummary').textContent='Generating…';
-  const j=await (await fetch('/api/briefing')).json();
+  const j=await (await officeFetch('/api/briefing?lang='+encodeURIComponent(document.getElementById('lang').value))).json();
   lastWorks=j.works||[];
   document.getElementById('briefSummary').textContent=j.summary||'';
   document.getElementById('complianceAlert').innerHTML=(j.compliance_alert?
@@ -376,7 +399,7 @@ async function loadBriefing(){
 }
 async function draftLetter(i){
   const el=document.getElementById('letter'+i); el.innerHTML='<span class="spin">Drafting…</span>';
-  const j=await (await fetch('/api/letter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lastWorks[i])})).json();
+  const j=await (await officeFetch('/api/letter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lastWorks[i])})).json();
   el.innerHTML=noticeHtml(j)+`<pre class="letter">${j.letter}</pre>`;
 }
 function speakBriefing(){ if(lastBriefing) speak(lastBriefing); }

@@ -10,7 +10,9 @@
 
 ## What it does
 
-**Citizens (inclusive by design):** report issues or suggest works by **photo** (Gemini Vision auto-classifies category, department, severity), **voice in 12 Indian languages** (no literacy or typing needed), or text. Works **offline** — reports queue on-device and sync when signal returns. Every response is also read aloud.
+**Citizens (inclusive by design):** report issues or suggest works by **photo** (Gemini Vision auto-classifies category, department, severity), **voice** (no literacy or typing needed), or text. Works **offline** — reports queue on-device and sync when signal returns. Every response is also read aloud.
+
+**Language support (stated precisely):** voice *input* in 12 Indian languages (on-device Web Speech API); chat *responses* in the user's language via Gemini's native multilingual generation plus a server-side translation chain (**Cloud Translation API → Gemini → Groq**) that also localises Lite-engine answers and briefing summaries; text-to-speech *output* with automatic script detection across 11 Indian scripts. Formal DA letters remain in English by design (official correspondence).
 
 **The MP's office:**
 - 💬 **Ask anything in natural language** (any Indian language): Gemini converts questions to SQL over grievances, ward demographics, and the fund ledger, and answers with charts
@@ -56,9 +58,21 @@ gcloud run deploy jansetu --source . --region asia-south1 \
   --allow-unauthenticated
 ```
 
-## Privacy & responsible AI
+## BigQuery mode (constituency-scale analytics)
 
-No Aadhaar, name, caste, or exact address collected; in-app consent screen (DPDP Act 2023-aligned); India data residency (asia-south1); read-only guard-railed SQL layer (prompt-injection defense); AI recommendations are advisory and traceable — the MP's office decides.
+The NL→SQL analytics path can run on **BigQuery** instead of SQLite:
+
+```bash
+pip install google-cloud-bigquery pandas pyarrow
+python scripts/load_bigquery.py --project YOUR_PROJECT --dataset jansetu
+export USE_BIGQUERY=1 BQ_PROJECT=YOUR_PROJECT BQ_DATASET=jansetu
+```
+
+Bare table names in generated SQL are mapped to the BigQuery dataset automatically; if BigQuery is unreachable the query falls back to SQLite (same degradation philosophy as the AI layer).
+
+## Privacy, security & responsible AI
+
+No Aadhaar, name, caste, or exact address collected; in-app consent screen (DPDP Act 2023-aligned); India data residency (asia-south1); read-only guard-railed SQL layer (prompt-injection defense); per-IP rate limiting (40 req/min); optional office authentication (`OFFICE_KEY` env → `X-Office-Key` header protects briefing/letter endpoints — left open in demo mode for judges); AI recommendations are advisory and traceable — the MP's office decides.
 
 ## Scalability & impact
 

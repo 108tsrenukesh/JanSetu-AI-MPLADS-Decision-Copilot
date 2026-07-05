@@ -29,7 +29,9 @@ Table: grievances
   lat REAL, lng REAL
 Tables can be JOINed on ward. SQLite dialect. Use date('now', '-30 days') style date arithmetic."""
 
-_FORBIDDEN = re.compile(r"\b(insert|update|delete|drop|alter|create|attach|pragma|replace)\b", re.I)
+_FORBIDDEN = re.compile(
+    r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|replace|"
+    r"vacuum|reindex|analyze|begin|commit|rollback|savepoint|load_extension)\b", re.I)
 
 
 def _conn():
@@ -38,7 +40,24 @@ def _conn():
     return conn
 
 
-def run_query(sql, limit=200):
+# ---- Optional BigQuery backend for the NL->SQL analytics path ----
+# Activate with: USE_BIGQUERY=1 BQ_PROJECT=<project> BQ_DATASET=jansetu
+# (after loading data with scripts/load_bigquery.py). Falls back to SQLite
+# automatically if the client or query fails — same graceful-degradation
+# philosophy as the AI layer.
+USE_BIGQUERY = os.environ.get("USE_BIGQUERY", "") == "1"
+BQ_PROJECT = os.environ.get("BQ_PROJECT", "")
+BQ_DATASET = os.environ.get("BQ_DATASET", "jansetu")
+_bq_client = None
+if USE_BIGQUERY and BQ_PROJECT:
+    try:
+        from google.cloud import bigquery as _bigquery
+        _bq_client = _bigquery.Client(project=BQ_PROJECT)
+    except Exception:
+        _bq_client = None
+
+
+def _validate(sql):
     stripped = sql.strip().rstrip(";")
     if not stripped.lower().startswith(("select", "with")):
         raise ValueError("Only SELECT queries are allowed")
@@ -46,6 +65,25 @@ def run_query(sql, limit=200):
         raise ValueError("Query contains forbidden keywords")
     if ";" in stripped:
         raise ValueError("Multiple statements not allowed")
+    return stripped
+
+
+def _bq_run(stripped, limit):
+    """Run on BigQuery, mapping bare table names to the dataset."""
+    for t in ("grievances", "wards", "mplads_funds"):
+        stripped = re.sub(rf"\b{t}\b", f"`{BQ_PROJECT}.{BQ_DATASET}.{t}`", stripped)
+    rows = [dict(r) for r in _bq_client.query(stripped).result(max_results=limit)]
+    cols = list(rows[0].keys()) if rows else []
+    return cols, rows
+
+
+def run_query(sql, limit=200):
+    stripped = _validate(sql)
+    if _bq_client is not None:
+        try:
+            return _bq_run(stripped, limit)
+        except Exception:
+            pass  # fall back to SQLite below
     conn = _conn()
     try:
         cur = conn.execute(stripped)
@@ -106,12 +144,17 @@ def fund_status():
         unspent = round(cur.get("allocated_lakh", 0) - cur.get("spent_lakh", 0), 1)
         spent = cur.get("spent_lakh", 0) or 1
         sc_st_pct_of_spend = round(100.0 * cur.get("sc_st_spent_lakh", 0) / spent, 1)
+        # Corrective amount: extra SC/ST-area spend needed to reach 22.5% of
+        # the full-year allocation (the practical target for compliance).
+        alloc = cur.get("allocated_lakh", 0)
+        sc_st_gap_lakh = round(max(0.0, 0.225 * alloc - cur.get("sc_st_spent_lakh", 0)), 1)
         return {"years": years, "current_year": cur.get("year"),
                 "unspent_lakh": unspent,
                 "unsanctioned_lakh": round(cur.get("allocated_lakh", 0) - cur.get("sanctioned_lakh", 0), 1),
                 "sc_st_pct_of_spend": sc_st_pct_of_spend,
                 "sc_st_mandate_pct": 22.5,
                 "sc_st_compliant": sc_st_pct_of_spend >= 22.5,
+                "sc_st_gap_lakh": sc_st_gap_lakh,
                 "sc_st_wards": [dict(r) for r in conn.execute(
                     "SELECT ward, sc_st_pct, population FROM wards WHERE sc_st_pct >= 25 ORDER BY sc_st_pct DESC").fetchall()]}
     finally:

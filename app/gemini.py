@@ -58,6 +58,56 @@ def _notice(reason):
             f"only the AI provider changed.")
 
 
+# ---- Server-side translation: Cloud Translation API -> Gemini -> Groq -> original ----
+TRANSLATE_KEY = os.environ.get("TRANSLATE_API_KEY", "") or os.environ.get("MAPS_API_KEY", "")
+
+LANG_NAMES = {
+    "en": "English", "hi": "Hindi", "bn": "Bengali", "ta": "Tamil", "te": "Telugu",
+    "mr": "Marathi", "gu": "Gujarati", "kn": "Kannada", "ml": "Malayalam",
+    "pa": "Punjabi", "or": "Odia", "ur": "Urdu",
+}
+
+
+def _lang_code(lang):
+    """'hi-IN' -> 'hi'."""
+    return (lang or "en").split("-")[0].lower()
+
+
+def _cloud_translate(text, target):
+    import urllib.request, urllib.parse
+    req = urllib.request.Request(
+        f"https://translation.googleapis.com/language/translate/v2?key={TRANSLATE_KEY}",
+        data=urllib.parse.urlencode({"q": text, "target": target, "format": "text"}).encode())
+    with urllib.request.urlopen(req, timeout=20) as r:
+        out = json.loads(r.read())
+    return out["data"]["translations"][0]["translatedText"]
+
+
+def translate_text(text, lang):
+    """Translate text into the user's language. Never raises; returns
+    (text, provider) where provider is '' when no translation happened."""
+    code = _lang_code(lang)
+    if code == "en" or not text:
+        return text, ""
+    name = LANG_NAMES.get(code, code)
+    if TRANSLATE_KEY:
+        try:
+            return _cloud_translate(text, code), "google-translate"
+        except Exception:
+            pass
+    if _client is not None:
+        try:
+            return _generate([f"Translate to {name}. Output ONLY the translation:\n{text}"]).strip(), "gemini"
+        except Exception:
+            pass
+    if GROQ_KEY:
+        try:
+            return _groq_generate(f"Translate to {name}. Output ONLY the translation:\n{text}").strip(), "groq"
+        except Exception:
+            pass
+    return text, ""  # graceful: English original
+
+
 def _generate(parts, system=None):
     from google.genai import types
     cfg = types.GenerateContentConfig(system_instruction=system) if system else None
@@ -92,15 +142,17 @@ Given a question and query results, answer in 2-4 short sentences, concrete and 
 Answer in the same language the user asked in. Mention specific wards/numbers."""
 
 
-def ask(question):
+def ask(question, lang="en-IN"):
+    lang_name = LANG_NAMES.get(_lang_code(lang), "English")
     if _client is None:
-        return _lite_ask(question, "no API key configured")
+        return _lite_ask(question, "no API key configured", lang)
     try:
         plan = _extract_json(_generate([f"Question: {question}"], system=SQL_SYSTEM)) or {}
         sql = plan.get("sql", "")
         cols, rows = db.run_query(sql)
         answer = _generate(
-            [f"Question: {question}\nSQL: {sql}\nResults (JSON): {json.dumps(rows[:50], default=str)}"],
+            [f"Question: {question}\nRespond in {lang_name} (or the question's own language if different).\n"
+             f"SQL: {sql}\nResults (JSON): {json.dumps(rows[:50], default=str)}"],
             system=ANSWER_SYSTEM)
         return {"answer": answer.strip(), "sql": sql, "rows": rows,
                 "chart": plan.get("chart", "none"), "x": plan.get("x"), "y": plan.get("y"),
@@ -111,18 +163,20 @@ def ask(question):
     except Exception as e:
         if GROQ_KEY:
             try:
-                return _groq_ask(question, _reason(e))
+                return _groq_ask(question, _reason(e), lang)
             except Exception:
                 pass
-        return _lite_ask(question, _reason(e))
+        return _lite_ask(question, _reason(e), lang)
 
 
-def _groq_ask(question, reason):
+def _groq_ask(question, reason, lang="en-IN"):
+    lang_name = LANG_NAMES.get(_lang_code(lang), "English")
     plan = _extract_json(_groq_generate(f"Question: {question}", system=SQL_SYSTEM)) or {}
     sql = plan.get("sql", "")
     cols, rows = db.run_query(sql)
     answer = _groq_generate(
-        f"Question: {question}\nSQL: {sql}\nResults (JSON): {json.dumps(rows[:50], default=str)}",
+        f"Question: {question}\nRespond in {lang_name} (or the question's own language if different).\n"
+        f"SQL: {sql}\nResults (JSON): {json.dumps(rows[:50], default=str)}",
         system=ANSWER_SYSTEM)
     return {"answer": answer.strip(), "sql": sql, "rows": rows,
             "chart": plan.get("chart", "none"), "x": plan.get("x"), "y": plan.get("y"),
@@ -164,7 +218,7 @@ _LITE_DEFAULT = (
     lambda rows: f"{rows[0]['ward']} has the most open complaints ({rows[0]['complaints']})." if rows else "No open complaints.")
 
 
-def _lite_ask(question, reason):
+def _lite_ask(question, reason, lang="en-IN"):
     q = question.lower()
     for pat, title, sql, chart, x, y, fmt in _LITE_TEMPLATES:
         if re.search(pat, q):
@@ -175,9 +229,11 @@ def _lite_ask(question, reason):
         cols, rows = db.run_query(sql)
     except Exception:
         cols, rows = [], []
-    return {"answer": f"{title}: {fmt(rows)}", "sql": sql, "rows": rows,
+    answer, provider = translate_text(f"{title}: {fmt(rows)}", lang)
+    return {"answer": answer, "sql": sql, "rows": rows,
             "chart": chart, "x": x, "y": y,
-            "engine": "lite", "notice": _notice(reason)}
+            "engine": "lite" + (f"+{provider}" if provider else ""),
+            "notice": _notice(reason)}
 
 
 VISION_SYSTEM = """You are a civic-issue triage system for an Indian constituency.
@@ -273,7 +329,7 @@ Rules: TOP 7 works; spikes and high-severity first; if SC/ST spend below 22.5% m
 prioritise wards with sc_st_pct >= 25 (mark sc_st_ward=true); prefer infra-gap wards;
 costs Rs 5-50 lakh each fitting unspent funds. Cite concrete numbers."""
 
-_briefing_cache = {"t": 0, "data": None}
+_briefing_cache = {}  # lang -> {"t": ts, "data": {...}}
 _CACHE_TTL = 600
 
 
@@ -288,10 +344,19 @@ def _gather_context():
     return stats, anomalies, funds, hot, high_open
 
 
-def priority_briefing():
+def _localise_briefing(out, lang):
+    if _lang_code(lang) != "en":
+        for key in ("summary", "compliance_alert"):
+            if out.get(key):
+                out[key], _ = translate_text(out[key], lang)
+    return out
+
+
+def priority_briefing(lang="en-IN"):
     now = time.time()
-    if _briefing_cache["data"] and now - _briefing_cache["t"] < _CACHE_TTL:
-        return _briefing_cache["data"]
+    cached = _briefing_cache.get(_lang_code(lang))
+    if cached and now - cached["t"] < _CACHE_TTL:
+        return cached["data"]
     stats, anomalies, funds, hot, high_open = _gather_context()
     if _client is not None:
         try:
@@ -300,7 +365,8 @@ def priority_briefing():
                 "high_severity_open": high_open, "dept_performance": stats["dept_performance"],
                 "fund_status": {k: funds[k] for k in
                                 ("current_year", "unspent_lakh", "unsanctioned_lakh",
-                                 "sc_st_pct_of_spend", "sc_st_mandate_pct", "sc_st_compliant")},
+                                 "sc_st_pct_of_spend", "sc_st_mandate_pct", "sc_st_compliant",
+                                 "sc_st_gap_lakh")},
                 "sc_st_wards": funds["sc_st_wards"],
                 "ward_profiles": [{k: w[k] for k in ("ward", "population", "sc_st_pct",
                                                      "schools", "phcs", "open_count", "high_count",
@@ -310,7 +376,8 @@ def priority_briefing():
             if not out or "works" not in out:
                 raise RuntimeError("unexpected AI response")
             out.update({"anomalies": anomalies, "funds": funds, "engine": "gemini", "notice": ""})
-            _briefing_cache.update({"t": now, "data": out})
+            out = _localise_briefing(out, lang)
+            _briefing_cache[_lang_code(lang)] = {"t": now, "data": out}
             return out
         except Exception as e:
             if GROQ_KEY:
@@ -320,11 +387,11 @@ def priority_briefing():
                     if out and "works" in out:
                         out.update({"anomalies": anomalies, "funds": funds,
                                     "engine": "groq", "notice": _groq_notice(_reason(e))})
-                        return out
+                        return _localise_briefing(out, lang)
                 except Exception:
                     pass
-            return _lite_briefing(anomalies, funds, hot, high_open, _reason(e))
-    return _lite_briefing(anomalies, funds, hot, high_open, "no API key configured")
+            return _localise_briefing(_lite_briefing(anomalies, funds, hot, high_open, _reason(e)), lang)
+    return _localise_briefing(_lite_briefing(anomalies, funds, hot, high_open, "no API key configured"), lang)
 
 
 def _lite_briefing(anomalies, funds, hot, high_open, reason):
@@ -370,7 +437,9 @@ def _lite_briefing(anomalies, funds, hot, high_open, reason):
                        f"{len(anomalies)} active complaint spikes. Ranked by the Lite engine "
                        f"(spikes → compliance gap → severity backlog).",
             "compliance_alert": "" if funds["sc_st_compliant"] else
-                f"SC/ST-area spend is {funds['sc_st_pct_of_spend']}% — below the mandatory 22.5% under MPLADS.",
+                f"SC/ST-area spend is {funds['sc_st_pct_of_spend']}% — below the mandatory 22.5% under MPLADS. "
+                f"Sanction approximately Rs {funds.get('sc_st_gap_lakh', 0)} lakh of works in SC/ST wards "
+                f"this year to close the gap.",
             "anomalies": anomalies, "funds": funds,
             "engine": "lite", "notice": _notice(reason)}
 
