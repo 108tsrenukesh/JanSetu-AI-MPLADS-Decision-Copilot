@@ -21,16 +21,27 @@ MOCK = _client is None
 
 # ---- Groq tier (free): OpenAI-compatible endpoint, no SDK needed ----
 GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+# Groq deprecates models over time; try candidates in order until one works.
+GROQ_MODELS = [m for m in [
+    os.environ.get("GROQ_MODEL", ""),
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile",
+    "gemma2-9b-it",
+] if m]
+GROQ_VISION_MODELS = [m for m in [
+    os.environ.get("GROQ_VISION_MODEL", ""),
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
+] if m]
+_groq_working_model = None  # cache the first model that responds
 
 
-def _groq_chat(messages, model=None):
-    """Raises on failure. messages = OpenAI-style list."""
+def _groq_call_once(messages, model):
     import urllib.request
     req = urllib.request.Request(
         "https://api.groq.com/openai/v1/chat/completions",
-        data=json.dumps({"model": model or GROQ_MODEL, "messages": messages,
+        data=json.dumps({"model": model, "messages": messages,
                          "temperature": 0.2}).encode(),
         headers={"Authorization": f"Bearer {GROQ_KEY}",
                  "Content-Type": "application/json"})
@@ -40,6 +51,23 @@ def _groq_chat(messages, model=None):
     if not text:
         raise RuntimeError("empty response")
     return text
+
+
+def _groq_chat(messages, model=None):
+    """Raises only if every candidate model fails."""
+    global _groq_working_model
+    candidates = ([model] if model else
+                  ([_groq_working_model] if _groq_working_model else []) + GROQ_MODELS)
+    last = None
+    for m in candidates:
+        try:
+            text = _groq_call_once(messages, m)
+            if model is None:
+                _groq_working_model = m
+            return text
+        except Exception as e:
+            last = e  # deprecated/unknown model or transient error - try next
+    raise last or RuntimeError("no Groq model available")
 
 
 def _groq_generate(user_text, system=None, model=None):
@@ -282,13 +310,19 @@ def classify_photo(image_bytes, mime, note, ward):
                 try:
                     import base64
                     b64 = base64.b64encode(image_bytes).decode()
-                    text = _groq_chat([
+                    msgs = [
                         {"role": "system", "content": VISION_SYSTEM},
                         {"role": "user", "content": [
                             {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                            {"type": "text", "text": f"Citizen note: {note or '(none)'}"}]}],
-                        model=GROQ_VISION_MODEL)
-                    ticket = _extract_json(text)
+                            {"type": "text", "text": f"Citizen note: {note or '(none)'}"}]}]
+                    text = None
+                    for vm in GROQ_VISION_MODELS:
+                        try:
+                            text = _groq_call_once(msgs, vm)
+                            break
+                        except Exception:
+                            continue
+                    ticket = _extract_json(text) if text else None
                     if ticket:
                         engine, notice = "groq", _groq_notice(_reason(e))
                 except Exception:

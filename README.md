@@ -1,6 +1,6 @@
 # JanSetu AI 🇮🇳 — MPLADS Decision Copilot for Constituency Development
 
-### 🔗 [**LIVE DEMO — click to open the platform**](https://REPLACE-WITH-CLOUD-RUN-URL.run.app) · no login needed · works on mobile
+### 🔗 [**LIVE DEMO — click to open the platform**](https://jansetu-763109706033.asia-south1.run.app) · no login needed · works on mobile
 
 > For evaluators: the demo storyline — open **Dashboard** (see the SC/ST compliance breach and streetlight spike alerts) → **Demand Hotspots** map (same wards glowing) → **Priority Works** (AI converts demand + idle funds into ranked sanctionable works; click "Draft recommendation letter") → **Report/Suggest** (photo → AI-classified ticket) → try voice in Hindi via the 🎙️ button.
 

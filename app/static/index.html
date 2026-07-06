@@ -227,7 +227,13 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
 let chatChart;
 function addMsg(text, who, sub){
   const d=document.createElement('div'); d.className='msg '+who; d.textContent=text;
-  if(sub){const s=document.createElement('small'); s.textContent=sub; d.appendChild(s);}
+  if(sub){
+    const t=document.createElement('button'); t.className='linkbtn'; t.textContent='Show query';
+    t.style.cssText='display:block;margin-top:6px;font-size:.72rem;color:#888';
+    const s=document.createElement('small'); s.textContent=sub; s.style.display='none';
+    t.onclick=()=>{const open=s.style.display==='none'; s.style.display=open?'block':'none'; t.textContent=open?'Hide query':'Show query';};
+    d.appendChild(t); d.appendChild(s);
+  }
   document.getElementById('chatlog').appendChild(d);
   d.scrollIntoView({behavior:'smooth'});
   return d;
