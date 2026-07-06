@@ -69,6 +69,30 @@
   #consent { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:99; }
   #consent .card { max-width:480px; margin:16px; }
   #offlineBanner { display:none; background:#d32f2f; color:#fff; text-align:center; padding:6px; font-size:.85rem; }
+  .hdr-btn { background:rgba(255,255,255,.15); color:#fff; border:none; border-radius:10px;
+    padding:6px 10px; font-size:.85rem; cursor:pointer; }
+  /* ---- dark theme ---- */
+  html.dark body { background:#101418; color:#e4e6eb; }
+  html.dark { --bg:#101418; --card:#1b2129; }
+  html.dark nav { border-color:#2c3440; }
+  html.dark nav button { color:#9aa4b2; }
+  html.dark nav button.active { color:#cdd6ff; }
+  html.dark .card, html.dark .kpi { box-shadow:0 1px 4px rgba(0,0,0,.5); color:#e4e6eb; }
+  html.dark .msg.bot { background:#242b36; color:#e4e6eb; }
+  html.dark .chatbar input, html.dark select, html.dark textarea { background:#242b36; color:#e4e6eb; border-color:#3a4452; }
+  html.dark .chips button { background:#242b36; color:#cdd6ff; border-color:#4a5568; }
+  html.dark .kpi b { color:#9ab0ff; }
+  html.dark .kpi small, html.dark .spin { color:#9aa4b2; }
+  html.dark .alert { background:#33290f; color:#ffd9a0; }
+  html.dark .alert.red { background:#3a1f22; color:#ffb4b4; }
+  html.dark .alert.info { background:#16283b; color:#a9cdf3; }
+  html.dark .ticket { background:#1d3320; color:#c9e7cd; }
+  html.dark pre.letter { background:#242b36; color:#e4e6eb; }
+  html.dark .work { border-color:#2c3440; }
+  html.dark .badge { background:#2c3440; color:#9aa4b2; }
+  html.dark .badge.scst { background:#1d3320; color:#7fd18a; }
+  html.dark .linkbtn { color:#9ab0ff; }
+  html.dark .msg.bot small { color:#9aa4b2; }
 </style>
 </head>
 <body>
@@ -77,7 +101,12 @@
   <div class="head-inner">
     <div style="font-size:1.8rem">🇮🇳</div>
     <div><h1>JanSetu AI</h1><span>Constituency Decision Intelligence · जनसेतु</span></div>
-    <div class="lang-toggle"><select id="lang" aria-label="Language for voice input and output">
+    <div class="lang-toggle" style="display:flex;gap:8px;align-items:center">
+    <button class="hdr-btn" id="ttsBtn" title="Toggle read-aloud" aria-label="Toggle read-aloud">🔊 Read aloud: On</button>
+    <select id="theme" aria-label="Theme" class="hdr-btn" style="appearance:auto">
+      <option value="system">🖥️ System</option><option value="light">☀️ Light</option><option value="dark">🌙 Dark</option>
+    </select>
+    <select id="lang" aria-label="Language for voice input and output">
       <option value="en-IN">English</option><option value="hi-IN">हिन्दी</option>
       <option value="bn-IN">বাংলা</option><option value="ta-IN">தமிழ்</option>
       <option value="te-IN">తెలుగు</option><option value="mr-IN">मराठी</option>
@@ -200,6 +229,26 @@ function addNotice(container, j){
     d.textContent='\u2139\ufe0f '+j.notice; container.appendChild(d); d.scrollIntoView({behavior:'smooth'}); }
 }
 
+// read-aloud toggle (accessibility option, persisted)
+let ttsOn = localStorage.getItem('jansetu_tts') !== 'off';
+const ttsBtn=document.getElementById('ttsBtn');
+function renderTts(){ ttsBtn.textContent = ttsOn ? '🔊 Read aloud: On' : '🔇 Read aloud: Off'; }
+ttsBtn.onclick=()=>{ ttsOn=!ttsOn; localStorage.setItem('jansetu_tts', ttsOn?'on':'off');
+  if(!ttsOn) speechSynthesis && speechSynthesis.cancel(); renderTts(); };
+renderTts();
+
+// theme: system / light / dark (persisted)
+const themeSel=document.getElementById('theme');
+themeSel.value = localStorage.getItem('jansetu_theme') || 'system';
+function applyTheme(){
+  const v=themeSel.value;
+  const dark = v==='dark' || (v==='system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.classList.toggle('dark', dark);
+}
+themeSel.onchange=()=>{ localStorage.setItem('jansetu_theme', themeSel.value); applyTheme(); };
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+applyTheme();
+
 // consent
 if(!localStorage.getItem('jansetu_consent')) document.getElementById('consent').style.display='flex';
 function acceptConsent(){ localStorage.setItem('jansetu_consent','1'); document.getElementById('consent').style.display='none'; }
@@ -280,7 +329,7 @@ function detectLang(text){
   return null;
 }
 function speak(text){
-  if(!window.speechSynthesis) return;
+  if(!window.speechSynthesis || !ttsOn) return;
   const clean=text.replace(/\[mock[^\]]*\]/g,'');
   const u=new SpeechSynthesisUtterance(clean);
   u.lang=detectLang(clean)||document.getElementById('lang').value;
