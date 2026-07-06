@@ -89,15 +89,32 @@ def letter(work: dict, request: Request):
     return gemini.draft_letter(work)
 
 
+MAX_PHOTO_BYTES = 8 * 1024 * 1024  # 8 MB
+
+
 @app.post("/api/report")
 async def report(photo: UploadFile = File(...), ward: str = Form(...), note: str = Form("")):
-    data = await photo.read()
-    return gemini.classify_photo(data, photo.content_type or "image/jpeg", note, ward)
+    if photo.content_type and not photo.content_type.startswith("image/"):
+        raise HTTPException(400, "Only image uploads are accepted")
+    data = await photo.read(MAX_PHOTO_BYTES + 1)
+    if len(data) > MAX_PHOTO_BYTES:
+        raise HTTPException(413, "Photo too large (max 8 MB)")
+    try:
+        return gemini.classify_photo(data, photo.content_type or "image/jpeg",
+                                     (note or "")[:500], ward)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+_diag_cache = {"t": 0.0, "data": None}
 
 
 @app.get("/api/diag")
 def diag():
-    """Live diagnostic: tests each AI tier and reports the raw error if any."""
+    """Live diagnostic: tests each AI tier and reports the raw error if any.
+    Cached 60s so it cannot be hammered to burn AI quota."""
+    if _diag_cache["data"] and time.time() - _diag_cache["t"] < 60:
+        return _diag_cache["data"]
     out = {"groq_key_set": bool(gemini.GROQ_KEY),
            "gemini_client": gemini._client is not None,
            "gemini_model": gemini.MODEL,
@@ -112,6 +129,7 @@ def diag():
             if gemini._client else "no client"
     except Exception as e:
         out["gemini_error"] = repr(e)[:400]
+    _diag_cache.update({"t": time.time(), "data": out})
     return out
 
 

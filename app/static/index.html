@@ -221,6 +221,7 @@ document.getElementById('ward').innerHTML = WARDS.map(w=>`<option>${w}</option>`
 
 // AI status chip + notice helper
 
+function esc(x){ const d=document.createElement('div'); d.textContent=x==null?'':String(x); return d.innerHTML; }
 function noticeHtml(j){
   return j && j.notice ? `<div class="alert info">\u2139\ufe0f ${j.notice}</div>` : '';
 }
@@ -402,7 +403,7 @@ async function loadDash(){
   document.getElementById('kUnspent').textContent='₹'+f.unspent_lakh;
   document.getElementById('kScSt').textContent=f.sc_st_pct_of_spend+'%';
   let html=s.anomalies.map(a=>
-    `<div class="alert">🚨 <b>${a.category}</b> complaints in <b>${a.ward}</b> are running <b>${a.ratio.toFixed(1)}×</b> the 6-month baseline.</div>`).join('');
+    `<div class="alert">🚨 <b>${esc(a.category)}</b> complaints in <b>${esc(a.ward)}</b> are running <b>${esc(a.ratio.toFixed(1))}×</b> the 6-month baseline.</div>`).join('');
   if(!f.sc_st_compliant) html+=`<div class="alert red">⚖️ SC/ST-area spend is <b>${f.sc_st_pct_of_spend}%</b> — below the mandatory <b>22.5%</b> under MPLADS. Corrective action: sanction ≈ <b>₹${f.sc_st_gap_lakh} lakh</b> of works in SC/ST wards this year to close the gap.</div>`;
   document.getElementById('alerts').innerHTML=html;
   mkChart('catChart','bar',s.by_category.map(r=>r.category),[{data:s.by_category.map(r=>r.n),backgroundColor:'#FF9933'}]);
@@ -435,16 +436,16 @@ async function loadBriefing(){
   lastWorks=j.works||[];
   document.getElementById('briefSummary').textContent=j.summary||'';
   document.getElementById('complianceAlert').innerHTML=(j.compliance_alert?
-    `<div class="alert red" style="margin-top:12px">⚖️ ${j.compliance_alert}</div>`:'')+noticeHtml(j);
+    `<div class="alert red" style="margin-top:12px">⚖️ ${esc(j.compliance_alert)}</div>`:'')+noticeHtml(j);
   lastBriefing=(j.summary||'')+'. '+lastWorks.map(w=>`Priority ${w.rank}: ${w.title}. ${w.rationale}`).join(' ');
   document.getElementById('works').innerHTML=lastWorks.map((w,i)=>`
     <div class="work ${w.urgency==='high'?'high':''}">
       <div class="rank">${w.rank}</div>
-      <div style="flex:1"><b>${w.title}</b>
-      <span class="badge">${w.ward||''}</span> <span class="badge">${w.department||''}</span>
-      <span class="badge">₹${w.est_cost_lakh||'?'} lakh</span>
+      <div style="flex:1"><b>${esc(w.title)}</b>
+      <span class="badge">${esc(w.ward||'')}</span> <span class="badge">${esc(w.department||'')}</span>
+      <span class="badge">₹${esc(w.est_cost_lakh||'?')} lakh</span>
       ${w.sc_st_ward?'<span class="badge scst">SC/ST mandate ✓</span>':''}
-      <div style="font-size:.88rem;color:#555;margin-top:4px">${w.rationale}${w.fund_note?' · '+w.fund_note:''}</div>
+      <div style="font-size:.88rem;color:#555;margin-top:4px">${esc(w.rationale)}${w.fund_note?' · '+esc(w.fund_note):''}</div>
       <button class="linkbtn" onclick="draftLetter(${i})">📄 Draft recommendation letter to District Authority</button>
       <div id="letter${i}"></div></div>
     </div>`).join('');
@@ -452,7 +453,7 @@ async function loadBriefing(){
 async function draftLetter(i){
   const el=document.getElementById('letter'+i); el.innerHTML='<span class="spin">Drafting…</span>';
   const j=await (await officeFetch('/api/letter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lastWorks[i])})).json();
-  el.innerHTML=noticeHtml(j)+`<pre class="letter">${j.letter}</pre>`;
+  el.innerHTML=noticeHtml(j)+`<pre class="letter">${esc(j.letter)}</pre>`;
 }
 function speakBriefing(){ if(lastBriefing) speak(lastBriefing); }
 
@@ -488,10 +489,10 @@ async function postReport(fileOrBlob, ward, note){
 }
 function showTicket(t){
   document.getElementById('ticketOut').innerHTML=noticeHtml(t)+`
-    <div class="ticket"><b>✅ Grievance #${t.id} filed</b><br>
-    <b>Category:</b> ${t.category} &nbsp; <b>Dept:</b> ${t.department}<br>
-    <b>Severity:</b> ${t.severity} &nbsp; <b>Ward:</b> ${t.ward}<br>
-    <b>AI description:</b> ${t.description}</div>`;
+    <div class="ticket"><b>✅ Grievance #${esc(t.id)} filed</b><br>
+    <b>Category:</b> ${esc(t.category)} &nbsp; <b>Dept:</b> ${esc(t.department)}<br>
+    <b>Severity:</b> ${esc(t.severity)} &nbsp; <b>Ward:</b> ${esc(t.ward)}<br>
+    <b>AI description:</b> ${esc(t.description)}</div>`;
   speak(`Your grievance number ${t.id} has been filed under ${t.category}, assigned to ${t.department}.`);
 }
 async function flushQueue(){

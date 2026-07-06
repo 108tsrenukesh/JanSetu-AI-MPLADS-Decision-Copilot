@@ -31,7 +31,11 @@ Tables can be JOINed on ward. SQLite dialect. Use date('now', '-30 days') style 
 
 _FORBIDDEN = re.compile(
     r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|replace|"
-    r"vacuum|reindex|analyze|begin|commit|rollback|savepoint|load_extension)\b", re.I)
+    r"vacuum|reindex|analyze|begin|commit|rollback|savepoint|load_extension|"
+    r"randomblob|zeroblob|writefile|readfile|fts3_tokenizer)\b", re.I)
+
+MAX_SQL_LEN = 2000
+_QUERY_STEP_LIMIT = 2_000_000  # abort runaway queries (cartesian joins etc.)
 
 
 def _conn():
@@ -59,6 +63,8 @@ if USE_BIGQUERY and BQ_PROJECT:
 
 def _validate(sql):
     stripped = sql.strip().rstrip(";")
+    if len(stripped) > MAX_SQL_LEN:
+        raise ValueError("Query too long")
     if not stripped.lower().startswith(("select", "with")):
         raise ValueError("Only SELECT queries are allowed")
     if _FORBIDDEN.search(stripped):
@@ -86,15 +92,36 @@ def run_query(sql, limit=200):
             pass  # fall back to SQLite below
     conn = _conn()
     try:
+        conn.execute("PRAGMA query_only = ON")   # hard read-only, defense in depth
+        _steps = [0]
+        def _guard():
+            _steps[0] += 1
+            return 1 if _steps[0] > _QUERY_STEP_LIMIT else 0  # non-zero aborts
+        conn.set_progress_handler(_guard, 10_000)
         cur = conn.execute(stripped)
         cols = [d[0] for d in cur.description]
         rows = [dict(zip(cols, r)) for r in cur.fetchmany(limit)]
         return cols, rows
+    except sqlite3.OperationalError as e:
+        if "interrupted" in str(e).lower():
+            raise ValueError("Query too expensive")
+        raise
+    finally:
+        conn.close()
+
+
+def valid_wards():
+    conn = _conn()
+    try:
+        return {r[0] for r in conn.execute("SELECT ward FROM wards").fetchall()}
     finally:
         conn.close()
 
 
 def insert_grievance(ward, category, department, description, severity, source, lat=None, lng=None):
+    if ward not in valid_wards():
+        raise ValueError("Unknown ward")
+    description = (description or "")[:500]
     conn = _conn()
     try:
         if lat is None:
