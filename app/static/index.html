@@ -76,7 +76,7 @@
 <header>
   <div class="head-inner">
     <div style="font-size:1.8rem">🇮🇳</div>
-    <div><h1>JanSetu AI</h1><span>Constituency Decision Intelligence · जनसेतु</span><span id="aiStatus" title="Active AI provider">…</span></div>
+    <div><h1>JanSetu AI</h1><span>Constituency Decision Intelligence · जनसेतु</span></div>
     <div class="lang-toggle"><select id="lang" aria-label="Language for voice input and output">
       <option value="en-IN">English</option><option value="hi-IN">हिन्दी</option>
       <option value="bn-IN">বাংলা</option><option value="ta-IN">தமிழ்</option>
@@ -191,10 +191,7 @@ const WARDS = ["Rajpur North","Rajpur South","Ganga Vihar","Shastri Nagar","Ambe
 document.getElementById('ward').innerHTML = WARDS.map(w=>`<option>${w}</option>`).join('');
 
 // AI status chip + notice helper
-fetch('/api/health').then(r=>r.json()).then(h=>{
-  const el=document.getElementById('aiStatus');
-  el.textContent = h.engine==='gemini' ? 'AI: Gemini \u2713' : 'AI: Lite engine (free fallback)';
-}).catch(()=>{});
+
 function noticeHtml(j){
   return j && j.notice ? `<div class="alert info">\u2139\ufe0f ${j.notice}</div>` : '';
 }

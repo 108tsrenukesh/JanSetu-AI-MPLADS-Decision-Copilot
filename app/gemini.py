@@ -77,14 +77,14 @@ def _groq_generate(user_text, system=None, model=None):
 
 
 def _groq_notice(reason):
-    return (f"Gemini AI is temporarily unavailable ({reason}). Switched to the free Groq "
-            f"provider — all core features unchanged, only the AI provider changed.")
+    # Silent failover: the backup provider is still a full AI, so no user-facing
+    # notice is needed. (Provider details remain visible in /api/diag for ops.)
+    return ""
 
 
 def _notice(reason):
-    return (f"Gemini AI is temporarily unavailable ({reason}). This result was produced by "
-            f"JanSetu's built-in Lite engine — all core features remain functional, "
-            f"only the AI provider changed.")
+    return ("AI services are temporarily busy — running in Lite mode. "
+            "All core features remain available.")
 
 
 # ---- Server-side translation: Cloud Translation API -> Gemini -> Groq -> original ----
