@@ -8,10 +8,16 @@
   "description": "Report civic issues by voice or photo in any Indian language; AI-powered constituency planning.",
   "icons": [
     {
-      "src": "https://api.iconify.design/twemoji/flag-india.svg?width=192",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
+      "src": "/static/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/static/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

@@ -138,6 +138,11 @@ def config():
     return {"maps_api_key": os.environ.get("MAPS_API_KEY", ""), "mock_mode": gemini.MOCK}
 
 
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(os.path.join(STATIC, "icon.png"))
+
+
 @app.get("/")
 def index():
     return FileResponse(os.path.join(STATIC, "index.html"))

@@ -16,4 +16,17 @@ Per-IP rate limiting (40 req/min, sliding window, HTTP 429). Photo uploads: imag
 
 ## Access & data
 
-Optional office authentication (`OFFICE_KEY` → `X-Office-Key`) on briefing/letter endpoints; citizen intake deliberately open. Ward values validated against the known ward list on insert. No PII collected (no Aadhaar, name, address); dataset fully synthetic; DPDP-aligned consent screen; India data residency (asia-south1). Maps browser key is public by design and restricted by HTTP referrer + API allow-list +
+Optional office authentication (`OFFICE_KEY` → `X-Office-Key`) on briefing/letter endpoints; citizen intake deliberately open. Ward values validated against the known ward list on insert. No PII collected (no Aadhaar, name, address); dataset fully synthetic; DPDP-aligned consent screen; India data residency (asia-south1). The Maps browser key is public by design (all client-side map keys are visible to the browser) and is protected by HTTP-referrer restriction and an API allow-list in Google Cloud, plus daily quota caps so it cannot be abused for cost.
+
+## Consciously accepted risks (hackathon scope)
+
+These are known trade-offs, documented rather than hidden:
+
+- The demo database is fully synthetic and public, so read-only data exposure is not sensitive.
+- The rate limiter and diagnostic/briefing caches are in-memory (per-instance) — adequate for a single-instance prototype; a production deployment would use a shared store such as Redis.
+- The office key, when enabled, is held in browser `localStorage`; production would use signed session cookies.
+- BigQuery and Cloud Translation are integrated but optional; the default SQLite path keeps the prototype runnable with zero cloud dependencies.
+
+## Reporting
+
+This is a hackathon prototype. For any security concern, please open a GitHub issue on the repository.
