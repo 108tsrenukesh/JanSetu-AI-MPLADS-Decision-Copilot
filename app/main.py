@@ -95,6 +95,26 @@ async def report(photo: UploadFile = File(...), ward: str = Form(...), note: str
     return gemini.classify_photo(data, photo.content_type or "image/jpeg", note, ward)
 
 
+@app.get("/api/diag")
+def diag():
+    """Live diagnostic: tests each AI tier and reports the raw error if any."""
+    out = {"groq_key_set": bool(gemini.GROQ_KEY),
+           "gemini_client": gemini._client is not None,
+           "gemini_model": gemini.MODEL,
+           "groq_models": getattr(gemini, "GROQ_MODELS", [])}
+    try:
+        out["groq_reply"] = gemini._groq_chat(
+            [{"role": "user", "content": "Reply with the word OK"}])[:60]
+    except Exception as e:
+        out["groq_error"] = repr(e)[:400]
+    try:
+        out["gemini_reply"] = gemini._generate(["Reply with the word OK"])[:60] \
+            if gemini._client else "no client"
+    except Exception as e:
+        out["gemini_error"] = repr(e)[:400]
+    return out
+
+
 @app.get("/api/config")
 def config():
     return {"maps_api_key": os.environ.get("MAPS_API_KEY", ""), "mock_mode": gemini.MOCK}
