@@ -44,7 +44,8 @@ def _groq_call_once(messages, model):
         data=json.dumps({"model": model, "messages": messages,
                          "temperature": 0.2}).encode(),
         headers={"Authorization": f"Bearer {GROQ_KEY}",
-                 "Content-Type": "application/json"})
+                 "Content-Type": "application/json",
+                 "User-Agent": "JanSetuAI/1.0 (civic decision platform)"})
     with urllib.request.urlopen(req, timeout=40) as r:
         out = json.loads(r.read())
     text = out["choices"][0]["message"]["content"]
@@ -105,7 +106,8 @@ def _cloud_translate(text, target):
     import urllib.request, urllib.parse
     req = urllib.request.Request(
         f"https://translation.googleapis.com/language/translate/v2?key={TRANSLATE_KEY}",
-        data=urllib.parse.urlencode({"q": text, "target": target, "format": "text"}).encode())
+        data=urllib.parse.urlencode({"q": text, "target": target, "format": "text"}).encode(),
+        headers={"User-Agent": "JanSetuAI/1.0"})
     with urllib.request.urlopen(req, timeout=20) as r:
         out = json.loads(r.read())
     return out["data"]["translations"][0]["translatedText"]
